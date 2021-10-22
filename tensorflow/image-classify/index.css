@@ -1,0 +1,40 @@
+h1 {
+  text-align: center;
+  margin-top: 50px;
+}
+.box {
+  display: flex;
+  height: 600px;
+  justify-content: center;
+  margin-top: 50px;
+}
+#pic-list {
+  width: 320px;
+  overflow-y: scroll;
+  display: flex;
+  flex-wrap: wrap;
+  margin-right: 30px;
+}
+#pic-list img {
+  width: 100px;
+  height: 100px;
+  box-sizing: border-box;
+  padding: 2px;
+  cursor: pointer;
+}
+#img-show {
+  border: 2px dashed #ccc;
+  margin-right: 30px;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 3px;
+  background: #f5f5f5;
+  width: 600px;
+  height: 600px;
+}
+#img-show img {
+  border-radius: 3px;
+}
+#result {
+  width: 300px;
+}
