@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+  <meta>
+    <title>Socket.IO chat</title>
+    <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scaleable=no"></meta>
+    <style>
+      body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+      #form { background: rgba(0, 0, 0, 0.15); padding: 0.25rem; position: fixed; bottom: 0; left: 0; right: 0; display: flex; height: 3rem; box-sizing: border-box; backdrop-filter: blur(10px); }
+      #input { border: none; padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin: 0.25rem; }
+      #input:focus { outline: none; }
+      #form > button { background: #333; border: none; padding: 0 1rem; margin: 0.25rem; border-radius: 3px; outline: none; color: #fff; }
+
+      #messages { list-style-type: none; margin: 0; padding: 0; }
+      #messages > li { padding: 0.5rem 1rem; }
+      #messages > li span.message { display: inline-block; padding: 5px 10px; border-radius: 8px; box-shadow: 0 0 3px #ccc; }
+      #messages > li.mime { text-align: right; }
+      #messages > li span.name { font-size: 12px; color: #999; display: block; margin-bottom: 5px }
+      #messages > li.mime span.message { background-color: green; color: #fff; }
+      #messages > li.other span.message { background-color: #fff; color: #333; }
+
+    </style>
+  </head>
+  <body>
+    <ul id="messages"></ul>
+    <form id="form" action="">
+      <input id="input" autocomplete="off" /><button>Send</button>
+    </form>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      class ChatRecords {
+        constructor () {
+          this.updateInterval = 10 * 60 * 1000
+          this.__unrecords = []
+          this.USER_NAME_KEY = '__USER_CHAT_NAME_KEY__'
+          this.USER_CHAT_RECORDS_KEY = '__USER_CHAT_RECORDS_KEY__' 
+          this.startTimer()
+          window.onbeforeunload = () => this.submitRecords()
+        }
+
+        startTimer () {
+          this.timer = setInterval(this.submitRecords, this.updateInterval)
+        }
+
+        stopTimer () {
+          clearInterval(this.timer)
+        }
+
+        addRecord ({ message, type, name }) {
+          this.__unrecords.push({ 
+            message, 
+            timestamp: Date.now(), 
+            type,
+            name
+          })
+        }
+
+        getHistorys () {
+          const historys = localStorage.getItem(this.USER_CHAT_RECORDS_KEY) || '[]'
+          return JSON.parse(historys)
+        }
+
+        submitRecords () {
+          let historys = this.getHistorys()
+          historys = historys.concat(this.__unrecords)
+          localStorage.setItem(this.USER_CHAT_RECORDS_KEY, JSON.stringify(historys))
+          this.__unrecords = []
+        }
+
+        getUserName () {
+          return localStorage.getItem(this.USER_NAME_KEY)
+        }
+
+        setUserName (name) {
+          localStorage.setItem(this.USER_NAME_KEY, name)
+        }
+
+        initialUser (perfix) {
+          const name = window.prompt('您的大名')
+          name ? this.setUserName(`${perfix} ${name}`) : this.initialUser(perfix)
+        }
+      
+      }
+    </script>
+    <script>
+      (() => {
+
+        const socket = io()
+
+        const records = new ChatRecords()
+
+        const form = document.getElementById('form')
+        const input = document.getElementById('input')
+
+        function insertRecords (arr) {
+          arr.forEach(item => insertMessage(item, true))
+          window.scrollTo(0, document.body.scrollHeight)
+        }
+
+        function insertMessage ({ message, type, name }, noScroll = false) {
+          var item = document.createElement('li')
+          var nameSpan = document.createElement('span')
+          var msgSpan = document.createElement('span')
+          item.className = type === 'mime' ? 'mime' : 'ohter'
+          msgSpan.className = 'message'
+          msgSpan.textContent = message
+          nameSpan.className = 'name'
+          nameSpan.textContent = `ID: ${name}`
+          item.appendChild(nameSpan)
+          item.appendChild(msgSpan)         
+          messages.appendChild(item)
+          !noScroll && window.scrollTo(0, document.body.scrollHeight)
+        }
+
+        function renderChatRecords () {
+          const userName = records.getUserName()
+
+          if (!userName) return
+          
+          // show histroy chat
+          const histroys = records.getHistorys()
+          insertRecords(histroys)
+        }
+
+
+        function listenSubmit (name = records.getUserName()) {
+          form.addEventListener('submit', function(e) {
+            e.preventDefault()
+            const message = input.value
+            if (message) {
+              socket.emit('chat message', { message, name })
+              // insertMessage({ message, type: 'mime', name })
+              // records.addRecord(message, 'mime')
+              input.value = ''
+            }
+          })
+        }
+
+        function onChat (userName = records.getUserName()) {
+          socket.on('chat message', function(data) {
+            const { message, name } = data
+            const type = name === userName ? 'mime' : 'other'
+            const opts = { message, type, name }
+            insertMessage(opts)
+            records.addRecord(opts)
+          })
+        }
+
+        function initial () {
+          const userName = records.getUserName()
+          if (!userName) {
+            socket.once('initial', ids => {
+              records.initialUser(ids)
+              listenSubmit()
+              onChat()
+            })
+            socket.emit('initial')
+          } else {
+            renderChatRecords()
+            listenSubmit()
+            onChat()
+          }
+        }
+
+        initial()
+
+      })()
+        
+    </script>
+  </body>
+</html>
