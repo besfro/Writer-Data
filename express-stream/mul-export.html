@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<body>
+  <head>
+    <title>批量导出测试</title>
+    <style></style>
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.2.0-beta.7/vue.global.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script>
+      const getDomain = (() => {
+        const domains = [
+          'http://a.test.com',
+          'http://b.test.com',
+          'http://c.test.com',
+          'http://d.test.com',
+          'http://e.test.com'
+        ]
+
+        let index = 0
+        return function () {
+          index = index + 1 > domains.length - 1 ? 0 : index + 1
+          return domains[index]
+        }
+        
+      })()
+    </script>
+    <script>
+      let index = 0
+
+      const { ref, reactive, toRefs, createApp } = Vue
+      const a = Vue.ref(22)
+      const app = createApp({
+        template: `
+          <div id="tools">
+            <input v-model="exportCount" placeholder="导出数量" id="exportCount" /> 
+            &nbsp;
+            <select v-model="transferType">
+              <option :value="STREAM_TYPE">stream</option>
+              <option :value="BUFFER_TYPE">buffer</option>
+            </select> 
+            &nbsp;      
+            <select v-model="fileType">
+              <option :value="BIG_FILE_TYPE">大文件</option>
+              <option :value="SMALL_FILE_TYPE">小文件</option>
+            </select>
+            &nbsp;
+            <button @click="start">开始</button>
+          </div>
+          <div id="process">
+            <div class="bar" v-for="item of downArr">
+              <span>文件名: {{ item.name }}</span>
+              <span>已下载大小: {{ item.chunkSize }}</span>
+              <span>总大小: {{ item.size }}</span>
+              <span>百分比: {{ item.percent }}%</span>
+              <button @click="save(item)"> 保存 </button>
+            </div>
+          </div>
+        `,
+        setup (props, ctx) {
+          const STREAM_TYPE = 0
+          const BUFFER_TYPE = 1
+          const BIG_FILE_TYPE = 1
+          const SMALL_FILE_TYPE = 0
+          const state = reactive({
+            exportCount: 6,
+            transferType: STREAM_TYPE,
+            fileType: BIG_FILE_TYPE
+          })
+
+          const downArr = ref([])
+          const addDownFile = id => downArr.value.push({ id, percent: 0, name: `file-${id}`, size: 0, chunkSize: 0, done: false })
+          const downloadFile = id => {
+            const findItem = downArr.value.find(item => item.id === id)
+            const { transferType, fileType } = state
+            const url = `${getDomain()}:3100/api/export?fileType=${fileType}&transferType=${transferType}`
+            return fetch(url)
+              .then(response => {
+                findItem.size = response.headers.get('content-length')
+                const [ stream, returnStream ] = response.body.tee()
+                const newResponse = new Response(returnStream, { headers: response.headers })
+                // function abort () {
+                //   stream.cancel()
+                //   response.cancel()
+                // }
+                return {
+                  response: newResponse,
+                  stream
+                }
+              })
+              .then(({ stream, response }) => {
+                const reader = stream.getReader()
+
+                function process ({ value, done }) {
+                  if (done) {
+                    console.log('it\'s done. file id: ' + id)
+                    findItem.done = true
+                    response.blob().then(
+                      blob => findItem.downUrl = URL.createObjectURL(blob, { type: 'video/mp4' })
+                    )
+                    return
+                  }
+                  
+                  const chunkSize = findItem.chunkSize += value.length
+                  findItem.percent = ( chunkSize / findItem.size * 100 ).toFixed(2)
+                  return reader.read().then(process)
+                }
+
+                return reader.read().then(process)
+              })
+              // .then(response => response.blob())
+              // .then(blob => {
+              //   console.log(blob)
+              // })
+          }
+
+          const downloading = ref(false)
+          const stop = () => {
+            downloading.value = false
+            downArr.value = []
+          }
+          const start = () => {
+            downloading.value = true
+            let len = state.exportCount
+            while(len > 0) {
+              const id = ++index
+              addDownFile(id)
+              downloadFile(id)
+              len--
+            }
+          }
+
+          function save ({ downUrl, id }) {
+            const link = document.createElement('a')
+            link.href = downUrl
+            link.download = `${Date.now()}-${id}.mp4`
+            link.click()
+          }
+
+          return {
+            ...toRefs(state),
+            STREAM_TYPE,
+            BUFFER_TYPE,
+            BIG_FILE_TYPE,
+            SMALL_FILE_TYPE,
+
+            downloading,
+            start,
+            stop,
+            downArr,
+            save
+          }
+        }      
+      })
+      .mount('#app')
+    </script>
+  </body>
+</body>
